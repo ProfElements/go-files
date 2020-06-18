@@ -114,7 +114,7 @@ func Read(data []byte) (*File, error) {
 
 func Write(data *File) ([]byte, error) {
 	buffer := &bytes.Buffer{}
-	_, err := buffer.WriteString("JAM2")
+	_, err := buffer.WriteString("FSTA")
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +129,12 @@ func Write(data *File) ([]byte, error) {
 		return nil, err
 	}
 
-	_, err = buffer.WriteString("Used JAMWork    ")
+	_, err = buffer.WriteString("JMWK")
+	if err != nil {
+		return nil, err
+	}
+
+	err = binary.Write(buffer, binary.LittleEndian, []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +163,7 @@ func Write(data *File) ([]byte, error) {
 		}
 	}
 
-	err = binary.Write(buffer, binary.LittleEndian, data.FileTable)
+	err = binary.Write(buffer, binary.LittleEndian, data.FileTable[:len(data.FileTable)-2])
 	if err != nil {
 		return nil, err
 	}
