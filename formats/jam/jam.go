@@ -202,9 +202,10 @@ func Decode(data *File) (*Work, error) {
 
 func Encode(data *Work) (*File, error) {
 	file := &File{}
-	file.Header.Magic = binary.LittleEndian.Uint32([]byte("JAM2"))
-	file.Header.ArchiveNote = "Used JAMWork    "
-	return nil, nil
+	file.Header.Magic = binary.LittleEndian.Uint32([]byte("FSTA"))
+	file.Header.unk1 = binary.LittleEndian.Uint32([]byte("\x00\x00\x00\x00"))
+	file.Header.ArchiveNote = "JMWK"
+
 }
 
 //----------//
