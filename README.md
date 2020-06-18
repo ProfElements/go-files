@@ -1,8 +1,9 @@
-# Go File Formats
-A library aiming to be able to read and write various formats, most of them being from the gamecube/wii era
+# Go Files
+A library and a set of utilites to make and modify many different exotic file formats, mostly from the wii/gamecube era.
 
 ### Supported File Formats
 
-It currently supports:
+This library currently supports the follow formats:
 
-.JAM Archives, only reading of them though
+.jam files, archive files of some high voltage gamecube games. This includes reading and writing of the format, however encoding is not currently supported.
+.tpl files, texture libraries for nintendo games, This only includes the CMPR image format, and it is currently only able to readd it.
