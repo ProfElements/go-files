@@ -15,8 +15,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/ProfElements/go-files/formats/tpl"
 	"strings"
+
+	"github.com/ProfElements/go-files/formats/tpl"
 )
 
 type fileEntry struct {
@@ -144,7 +145,7 @@ func Write(data *File) ([]byte, error) {
 	}
 
 	for idx := 0; idx < int(data.Header.fileNameCount); idx++ {
-		err = binary.Write(buffer, binary.LittleEndian, binary.LittleEndian.Uint32([]byte(data.fileNameTable[idx])))
+		err = binary.Write(buffer, binary.LittleEndian, binary.LittleEndian.Uint64([]byte(data.fileNameTable[idx])))
 		if err != nil {
 			return nil, err
 		}
@@ -196,8 +197,9 @@ func Decode(data *File) (*Work, error) {
 
 func Encode(data *Work) (*File, error) {
 	file := &File{}
-	file.Header.Magic = "JAM2"
-	file.ArchiveNote = "Used JAMWork    "
+	file.Header.Magic = binary.LittleEndian.Uint32([]byte("JAM2"))
+	file.Header.ArchiveNote = "Used JAMWork    "
+	return nil, nil
 }
 
 //----------//
