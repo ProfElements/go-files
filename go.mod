@@ -1,3 +1,3 @@
-module github.com/profelements/go-file-formats
+module github.com/ProfElements/go-files
 
 go 1.14
