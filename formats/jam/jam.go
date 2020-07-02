@@ -202,10 +202,58 @@ func Decode(data *File) (*Work, error) {
 
 func Encode(data *Work) (*File, error) {
 	file := &File{}
+	fileEntryTable := make([]fileEntry, len(data.Files))
+
 	file.Header.Magic = binary.LittleEndian.Uint32([]byte("FSTA"))
 	file.Header.unk1 = binary.LittleEndian.Uint32([]byte("\x00\x00\x00\x00"))
 	file.Header.ArchiveNote = "JMWK"
 
+	//setup
+	//fileNameCount := 0
+	fileNameTable := make([]string, len(data.Files))
+	fileNameCount := 0
+
+	for i := 0; i < len(data.Files); i++ {
+		if arrayContains(fileNameTable, data.Files[i].FileName) {
+
+		} else {
+			fileNameTable[fileNameCount] = data.Files[i].FileName
+			fileEntryTable[i].fileNameIdx = uint16(fileNameCount)
+			fmt.Printf(fileNameTable[fileNameCount] + "\n")
+			fileNameCount++
+		}
+	}
+
+	fmt.Printf("%v\n", fileNameCount)
+
+	fileExtTable := make([]string, len(data.Files))
+	fileExtCount := 0
+
+	for i := 0; i < len(data.Files); i++ {
+		if arrayContains(fileExtTable, data.Files[i].FileExt) {
+
+		} else {
+			fileExtTable[fileExtCount] = data.Files[i].FileExt
+			fileEntryTable[i].fileExtIdx = uint16(fileExtCount)
+			fmt.Printf(fileExtTable[fileExtCount] + "\n")
+			fileExtCount++
+		}
+	}
+
+	fmt.Printf("%v\n", fileExtCount)
+
+	file.Header.fileNameCount = uint16(fileNameCount)
+	file.Header.fileExtCount = uint16(fileExtCount)
+	file.fileNameTable = fileNameTable
+	file.fileExtTable = fileExtTable
+
+	for i := 0; i < len(data.Files); i++ {
+		fileEntryTable[i].FileOffset = 0
+	}
+
+	file.FileTable = fileEntryTable
+
+	return nil, fmt.Errorf("Currently not working right.")
 }
 
 //----------//
@@ -253,4 +301,13 @@ func getData(fileExt string, fileOffset uint32, data *File) []byte {
 		return fileData
 	}
 
+}
+
+func arrayContains(array []string, item string) bool {
+	for i := 0; i < len(array); i++ {
+		if array[i] == item && array[i] != "" {
+			return true
+		}
+	}
+	return false
 }
