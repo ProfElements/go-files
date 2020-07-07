@@ -202,58 +202,60 @@ func Decode(data *File) (*Work, error) {
 
 func Encode(data *Work) (*File, error) {
 	file := &File{}
-	fileEntryTable := make([]fileEntry, len(data.Files))
-
-	file.Header.Magic = binary.LittleEndian.Uint32([]byte("FSTA"))
-	file.Header.unk1 = binary.LittleEndian.Uint32([]byte("\x00\x00\x00\x00"))
+	file.Header.Magic = binary.BigEndian.Uint32([]byte("JAM2"))
+	file.Header.unk1 = uint32(0) //Temporarily Set this to 0, it seems to work.
 	file.Header.ArchiveNote = "JMWK"
 
-	//setup
-	//fileNameCount := 0
-	fileNameTable := make([]string, len(data.Files))
+	//Setup
 	fileNameCount := 0
-
-	for i := 0; i < len(data.Files); i++ {
-		if arrayContains(fileNameTable, data.Files[i].FileName) {
-
-		} else {
-			fileNameTable[fileNameCount] = data.Files[i].FileName
-			fileEntryTable[i].fileNameIdx = uint16(fileNameCount)
-			fmt.Printf(fileNameTable[fileNameCount] + "\n")
-			fileNameCount++
-		}
-	}
-
-	fmt.Printf("%v\n", fileNameCount)
-
-	fileExtTable := make([]string, len(data.Files))
 	fileExtCount := 0
 
-	for i := 0; i < len(data.Files); i++ {
-		if arrayContains(fileExtTable, data.Files[i].FileExt) {
+	var tempNameTable []string
+	tempNameTable = make([]string, len(data.Files))
+	var tempExtTable []string
+	tempExtTable = make([]string, len(data.Files))
 
+	var tempEntryTable []fileEntry
+	tempEntryTable = make([]fileEntry, len(data.Files))
+
+	for i := 0; i < len(tempNameTable); i++ {
+		if arrayContains(tempNameTable, data.Files[i].FileName) {
+			continue
 		} else {
-			fileExtTable[fileExtCount] = data.Files[i].FileExt
-			fileEntryTable[i].fileExtIdx = uint16(fileExtCount)
-			fmt.Printf(fileExtTable[fileExtCount] + "\n")
+			tempNameTable[fileNameCount] = data.Files[i].FileName
+			fileNameCount++
+		}
+
+		if tempNameTable[fileNameCount] == data.Files[i].FileName {
+			tempEntryTable[i].fileNameIdx = uint16(fileNameCount)
+		}
+
+	}
+	file.Header.fileNameCount = uint16(fileNameCount)
+	file.fileNameTable = tempNameTable
+
+	for i := 0; i < len(tempExtTable); i++ {
+		if arrayContains(tempExtTable, data.Files[i].FileExt) {
+			continue
+		} else {
+			tempExtTable[fileExtCount] = data.Files[i].FileExt
 			fileExtCount++
 		}
+
+		if tempExtTable[fileExtCount] == data.Files[i].FileExt {
+			tempEntryTable[i].fileNameIdx = uint16(fileExtCount)
+		}
 	}
-
-	fmt.Printf("%v\n", fileExtCount)
-
-	file.Header.fileNameCount = uint16(fileNameCount)
 	file.Header.fileExtCount = uint16(fileExtCount)
-	file.fileNameTable = fileNameTable
-	file.fileExtTable = fileExtTable
+	file.fileExtTable = tempExtTable
 
-	for i := 0; i < len(data.Files); i++ {
-		fileEntryTable[i].FileOffset = 0
-	}
+	//fileTableEndOffset uint32
 
-	file.FileTable = fileEntryTable
+	//FileTable     []fileEntry I just have to figure out the offsets,
+	//Files         []byte FileTable[i].fileOffset and writing of the files will need to be done in tandem
+	//Data          []byte hate myself for this using this stupid bullshit :(
 
-	return nil, fmt.Errorf("Currently not working right.")
+	return nil, fmt.Errorf("Currently encoding is not working.")
 }
 
 //----------//
