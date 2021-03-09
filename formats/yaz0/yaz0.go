@@ -16,7 +16,7 @@ type Header struct {
 	Magic     string
 	DataSize  uint32
 	reserved1 uint32
-	reserved2 unit32
+	reserved2 uint32
 }
 type File struct {
 	Header Header
@@ -31,7 +31,7 @@ func Read(data []byte) (*File, error) {
 		return nil, fmt.Errorf("This is not a yaz0 encoded file, the  file magic is wrong!")
 	}
 
-	file.Header.Magic = data[:4]
+	file.Header.Magic = string(data[:4])
 	file.Header.DataSize = binary.BigEndian.Uint32(data[4:8])
 	file.Header.reserved1 = binary.BigEndian.Uint32(data[8:12])
 	file.Header.reserved2 = binary.BigEndian.Uint32(data[12:16])
@@ -41,22 +41,22 @@ func Read(data []byte) (*File, error) {
 }
 func Write(data *File) ([]byte, error) {
 	buffer := &bytes.Buffer{}
-	_, err = buffer.WriteString("YAZ0")
+	_, err := buffer.WriteString("YAZ0")
 	if err != nil {
 		return nil, err
 	}
 
-	err = binary.Write(buffer, binary.BigEndian, Uint32(data.DataSize))
+	err = binary.Write(buffer, binary.BigEndian, uint32(data.Header.DataSize))
 	if err != nil {
 		return nil, err
 	}
 
-	err = binary.Write(buffer, binary.BigEndian, Uint32(0))
+	err = binary.Write(buffer, binary.BigEndian, uint32(0))
 	if err != nil {
 		return nil, err
 	}
 
-	err = binary.Write(buffer, binary.BigEndian, Uint32(0))
+	err = binary.Write(buffer, binary.BigEndian, uint32(0))
 	if err != nil {
 		return nil, err
 	}
@@ -75,9 +75,9 @@ func Encode(data Work) *File {
 	file := &File{}
 
 	file.Header.Magic = "YAZ0"
-	file.Header.DataSize = Uint32(len(data))
-	file.Header.reserved1 = Uint32(0)
-	file.Header.reserved2 = Uint32(0)
+	file.Header.DataSize = uint32(len(data))
+	file.Header.reserved1 = uint32(0)
+	file.Header.reserved2 = uint32(0)
 	file.Data = compress(data)
 
 	return file

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -38,12 +38,12 @@ func main() {
 		}
 		fileData := make([]jam.WorkFile, len(files))
 		for i, f := range files {
-			file_path := args[1] + strings.TrimSuffix(f.Name(), filepath.Ext(f.Name())) + filepath.Ext(f.Name())
+			filePath := args[1] + strings.TrimSuffix(f.Name(), filepath.Ext(f.Name())) + filepath.Ext(f.Name())
 			if err != nil {
 				fmt.Printf("getting absolute path of files didnt work.")
 			}
 
-			binFile, err := ioutil.ReadFile(file_path)
+			binFile, err := ioutil.ReadFile(filePath)
 			if err != nil {
 				fmt.Printf("Reading file failed. %v \n", err)
 			}

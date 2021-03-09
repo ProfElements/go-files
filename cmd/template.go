@@ -1,11 +1,9 @@
-package util
+package cmd
 
 /*
 NAME:
 DESCRIPTION:
 USAGE:
 */
-
-import ()
 
 func main() {}
