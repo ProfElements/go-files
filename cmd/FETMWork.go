@@ -80,7 +80,7 @@ func parseData(data []byte) {
 		}
 
 		strPath := filepath.Base(inputFile)
-		strPath = strings.Trim(strPath, filepath.Ext(strPath))
+		strPath = strings.TrimSuffix(strPath, filepath.Ext(strPath))
 		fmt.Printf(strPath + ".json")
 
 		if outputFile == "" {
