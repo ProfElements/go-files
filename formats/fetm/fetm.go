@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strconv"
 )
 
 type identifer uint8
@@ -187,8 +186,7 @@ func (data *FETM) Write() ([]byte, error) {
 		case u32:
 			binary.Write(&buffer, binary.BigEndian, uint32(value.Data.(float64)))
 		case hex:
-			hex, _ := strconv.ParseUint(value.Data.(string), 10, 0)
-			binary.Write(&buffer, binary.BigEndian, uint32(hex))
+			binary.Write(&buffer, binary.BigEndian, uint32(value.Data.(float64)))
 		case f32:
 			binary.Write(&buffer, binary.BigEndian, float32(value.Data.(float64)))
 		case str:

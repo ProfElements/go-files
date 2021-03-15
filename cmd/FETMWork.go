@@ -30,7 +30,7 @@ func main() {
 
 	flag.StringVar(&outputFile, "outputfile", "", "Output file path for the resultant fetm or json file.")
 
-	flag.BoolVar(&isRaw, "raw", false, "A flag to specify whether to output raw or constructed json")
+	flag.BoolVar(&isRaw, "raw", true, "A flag to specify whether to output raw or constructed json")
 	flag.BoolVar(&isJson, "json", false, "Whether to convert json to fetm")
 
 	flag.Parse()
