@@ -3,8 +3,10 @@ package fetm
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 )
 
 type identifer uint8
@@ -35,14 +37,20 @@ type header struct {
 }
 
 type world struct {
-	Raw []variantData
+	World variantData
+	Raw   []variantData
 }
 
 type sector struct {
 	Raw []variantData
 }
 
-type node struct{}
+type node struct {
+	NodeType      variantData
+	NodeFactory   variantData
+	EntityClass   variantData
+	DependentData []variantData
+}
 
 /*
 FETM ...
@@ -64,62 +72,75 @@ func Read(data []byte) (*FETM, error) {
 	fetm := &FETM{}
 
 	if len(data) < 3 {
-		return nil, fmt.Errorf("data is not long enough to be considered a FETM")
+		return nil, fmt.Errorf("data is not long enough to be considered a FETM\n")
 	}
 
 	if !bytes.Equal(data[:3], []byte{0x01, 0x7C, 0x07}) {
-		return nil, fmt.Errorf("this file does not have FETM header magic")
+		return nil, fmt.Errorf("this file does not have FETM header magic\n")
 	}
 
 	readIndex := 0
 
 	for len(data) > readIndex {
 
-		if uint8(data[readIndex]) > 7 {
-			return nil, fmt.Errorf("unkown identifer from file")
-		}
-
 		curIdent := identifer(uint8(data[readIndex]))
-		readIndex++
+
+		//fmt.Printf("curIdent %v\n", curIdent)
 
 		switch curIdent {
 		case s8:
-			fetm.Raw = append(fetm.Raw, variantData{curIdent, int8(data[readIndex])})
-			readIndex++
+			fetm.Raw = append(fetm.Raw, variantData{curIdent, int8(data[readIndex+1])})
+			readIndex += 2
 		case u8:
-			fetm.Raw = append(fetm.Raw, variantData{curIdent, uint8(data[readIndex])})
-			readIndex++
+			fetm.Raw = append(fetm.Raw, variantData{curIdent, uint8(data[readIndex+1])})
+			readIndex += 2
 		case s16:
 			var val int16
 			buf := bytes.NewReader(data[readIndex : readIndex+1])
 			binary.Read(buf, binary.BigEndian, &val)
 
 			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
-			readIndex++
+			readIndex += 2
 		case u16:
 			var val uint16
-			buf := bytes.NewReader(data[readIndex : readIndex+1])
-			binary.Read(buf, binary.BigEndian, &val)
-
-			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
-			readIndex++
-		case u32:
-			var val uint32
-			buf := bytes.NewReader(data[readIndex : readIndex+3])
+			buf := bytes.NewReader(data[readIndex+1 : readIndex+3])
 			binary.Read(buf, binary.BigEndian, &val)
 
 			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
 			readIndex += 3
-		case f32:
-			var val float32
-			buf := bytes.NewReader(data[readIndex : readIndex+3])
+		case u32:
+			var val uint32
+			buf := bytes.NewReader(data[readIndex+1 : readIndex+5])
 			binary.Read(buf, binary.BigEndian, &val)
 
 			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
+			readIndex += 5
+		case hex:
+			var val uint32
+			buf := bytes.NewReader(data[readIndex+1 : readIndex+5])
+			binary.Read(buf, binary.BigEndian, &val)
+
+			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
+			readIndex += 5
+		case f32:
+			var val float32
+			buf := bytes.NewReader(data[readIndex+1 : readIndex+5])
+			binary.Read(buf, binary.BigEndian, &val)
+
+			fetm.Raw = append(fetm.Raw, variantData{curIdent, val})
+			readIndex += 5
 		case str:
-			fetm.Raw = append(fetm.Raw, variantData{curIdent, findStr(data, readIndex)})
+			strData := findStr(data, readIndex)
+
+			fetm.Raw = append(fetm.Raw, variantData{curIdent, strData})
+			if len(strData) == 1 {
+				readIndex++
+			} else {
+				readIndex += len(strData) + 2
+			}
+
 		default:
-			return nil, fmt.Errorf("unkown identifer from file")
+			return nil, fmt.Errorf("unknown idenifier %v at %x", curIdent, readIndex)
 		}
 
 	}
@@ -131,11 +152,13 @@ func Read(data []byte) (*FETM, error) {
 	fetm.Header.Raw = fetm.Raw[0:3]
 
 	if reflect.TypeOf(fetm.Raw[4].Data).String() == "string" && fetm.Raw[4].Data.(string) == "world" {
+		fetm.World.World = fetm.Raw[4]
+
 		for idx, value := range fetm.Raw {
-			if reflect.TypeOf(value.Data).String() == "string" && value.Data.(string) == "sector" {
-				fetm.World.Raw = fetm.Raw[4 : idx-1]
+			if reflect.TypeOf(value.Data).String() == "string" && value.Data.(string) == "World Sector" {
+				fetm.World.Raw = fetm.Raw[4 : idx-2]
 				//This includes nodes as of right due to not being able to look at source to figure out how they find nodes
-				fetm.Sector.Raw = fetm.Raw[idx:]
+				fetm.Sector.Raw = fetm.Raw[idx-2:]
 			}
 		}
 	}
@@ -148,33 +171,90 @@ Write ...
 Write FETM data to file or error
 */
 func (data *FETM) Write() ([]byte, error) {
-	return nil, fmt.Errorf("write is not currently implmented")
+	var buffer bytes.Buffer
+
+	for _, value := range data.Raw {
+		binary.Write(&buffer, binary.BigEndian, byte(value.Ident))
+		switch value.Ident {
+		case s8:
+			binary.Write(&buffer, binary.BigEndian, int8(value.Data.(float64)))
+		case u8:
+			binary.Write(&buffer, binary.BigEndian, uint8(value.Data.(float64)))
+		case s16:
+			binary.Write(&buffer, binary.BigEndian, int16(value.Data.(float64)))
+		case u16:
+			binary.Write(&buffer, binary.BigEndian, uint16(value.Data.(float64)))
+		case u32:
+			binary.Write(&buffer, binary.BigEndian, uint32(value.Data.(float64)))
+		case hex:
+			hex, _ := strconv.ParseUint(value.Data.(string), 10, 0)
+			binary.Write(&buffer, binary.BigEndian, uint32(hex))
+		case f32:
+			binary.Write(&buffer, binary.BigEndian, float32(value.Data.(float64)))
+		case str:
+			binary.Write(&buffer, binary.BigEndian, []byte(value.Data.(string)))
+			binary.Write(&buffer, binary.BigEndian, byte(0x00))
+		default:
+		}
+	}
+
+	return buffer.Bytes(), nil
 }
 
 /*
 DecodeFromJSON ...
 Read data from a json file and decode it to FETM structure or error
 */
-func DecodeFromJSON(data []byte) (*FETM, error) {
-	return nil, fmt.Errorf("DecodeFromJSON is not currently implemented")
+func DecodeFromJSON(data []byte, isRaw bool) (*FETM, error) {
+	fetm := FETM{}
+
+	if isRaw {
+		err := json.Unmarshal(data, &fetm.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("something went wrong when decoding from json %v", err)
+		}
+	} else {
+		err := json.Unmarshal(data, &fetm)
+		if err != nil {
+			return nil, fmt.Errorf("something went wrong when decoding from json %v", err)
+		}
+	}
+
+	return &fetm, nil
 }
 
 /*
 EncodeToJSON ...
 Encode and write FETM data to JSON file or error
 */
-func (data *FETM) EncodeToJSON() ([]byte, error) {
-	return nil, fmt.Errorf("EncodeToJSON is not currently implemented")
+func (data *FETM) EncodeToJSON(isRaw bool) ([]byte, error) {
+	if isRaw {
+		raw, err := json.Marshal(data.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("something went wrong when encoding the json")
+		}
+		return raw, nil
+	} else {
+		raw, err := json.Marshal(data)
+		if err != nil {
+			return nil, fmt.Errorf("something went wrong when encoding the json")
+		}
+		return raw, nil
+	}
+
 }
 
 func findStr(data []byte, startIndex int) string {
-	curIndex := startIndex
-	for len(data) > curIndex {
-		if data[curIndex] == 0x00 {
-			return string(data[startIndex:curIndex])
+	startIndex++
+	currentIndex := startIndex
+	for len(data) > currentIndex {
+		if data[currentIndex] == 0x00 {
+			return string(data[startIndex:currentIndex])
 		}
-		curIndex++
+		currentIndex++
 	}
 
 	return ""
 }
+
+//Look at ParseWorldBlock, ParseSectorBlock, and ParseNodeList
