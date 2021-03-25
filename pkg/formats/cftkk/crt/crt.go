@@ -1,6 +1,7 @@
 package crt
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"image"
@@ -87,7 +88,7 @@ func Read(Data []byte) (*KRTTexture, error) {
 	return texture, nil
 }
 
-func Decode(data *KRTTexture) (*image.NRGBA, error) {
+func Decode(data *KRTTexture) (*image.RGBA, error) {
 
 	//if data.imageFormat != 16 {
 	//	return nil, fmt.Errorf("does not currently support any other pixel formats besides 16 format: %v", data.imageFormat)
@@ -95,9 +96,11 @@ func Decode(data *KRTTexture) (*image.NRGBA, error) {
 
 	imageDataIndex := 0
 	imgIndex := 0
-	imageDataPixel := binary.BigEndian.Uint16(data.imageData[imageDataIndex : imageDataIndex+2])
-
-	img := image.NewNRGBA(image.Rect(0, 0, int(data.width), int(data.height)))
+	imageDataPixel := getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex)
+	if imageDataPixel == nil {
+		return nil, fmt.Errorf("texture format not recognized or not yet implemented")
+	}
+	img := image.NewRGBA(image.Rect(0, 0, int(data.width), int(data.height)))
 
 	//blockWidth := 4
 	//blockHeight := 4
@@ -117,13 +120,36 @@ func Decode(data *KRTTexture) (*image.NRGBA, error) {
 			Ix := blockCol*blockWidth + (block_i % blockWidth)
 			Iy := blockRow*blockHeight + (block_i / blockWidth)
 
-			pixelColor := getColorFromTextureFormat(data.imageFormat, imageDataPixel)
+			var imageDataPixel32 uint32
+
+			switch v := imageDataPixel.(type) {
+			case uint8:
+				imageDataPixel32 = uint32(imageDataPixel.(uint8))
+				_ = v
+			case uint16:
+				imageDataPixel32 = uint32(imageDataPixel.(uint16))
+			case uint32:
+				imageDataPixel32 = imageDataPixel.(uint32)
+			}
+
+			pixelColor := getColorFromTextureFormat(data.imageFormat, imageDataPixel32)
+			if pixelColor == nil {
+				pixelColor = getColorFromTexturePalette(data.imageFormat, data.mipMapData, imageDataPixel32)
+			}
 
 			img.Set(Ix, Iy, pixelColor)
 			imageDataIndex += 2
 			imgIndex++
 			if imageDataIndex < len(data.imageData) {
-				imageDataPixel = binary.BigEndian.Uint16(data.imageData[imageDataIndex : imageDataIndex+2])
+				switch v := getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(type) {
+				case uint8:
+					imageDataPixel = uint32(getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint8))
+					_ = v
+				case uint16:
+					imageDataPixel = uint32(getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint16))
+				case uint32:
+					imageDataPixel = getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint32)
+				}
 			}
 
 		}
@@ -191,13 +217,23 @@ func getBlockSizeFromTextureFormat(imageFormat uint32) (width int, height int) {
 	}
 }
 
-func getColorFromTextureFormat(imageFormat uint32, pixel uint16) color.NRGBA {
+func getColorFromTextureFormat(imageFormat uint32, pixel uint32) *color.RGBA {
 	switch imageFormat {
 	case 0xf:
 		// GX_TF_RGBA8	    0x6
+		buf := new(bytes.Buffer)
+		binary.Write(buf, binary.LittleEndian, pixel)
+		colorData := buf.Bytes()
+
+		return &color.RGBA{
+			R: colorData[0],
+			G: colorData[1],
+			B: colorData[2],
+			A: colorData[3],
+		}
 	case 0x10:
 		//GX_TF_RGB5A3		0x5
-		return color.NRGBA{
+		return &color.RGBA{
 			R: uint8(((pixel & 0x7C00) >> 10) << 3),
 			G: uint8(((pixel & 0x3E0) >> 5) << 3),
 			B: uint8((pixel & 0x1F) << 3),
@@ -205,34 +241,76 @@ func getColorFromTextureFormat(imageFormat uint32, pixel uint16) color.NRGBA {
 		}
 	case 0x11:
 		//GX_TF_CI8			0x9
+		return nil
 	case 0x12:
 		//GX_TF_CI8			0x9
+		return nil
 	case 0x13:
+		return nil
 		//Says it just a palette or something :shrug:
 	case 0x15:
-		//GX_TF_CMPR		0xE
+		return nil
 	case 0x16:
 		// GX_TF_I4			0x0
+		return nil
 	case 0x17:
 		//GX_TF_RGB565		0x4
-		return color.NRGBA{
+		return &color.RGBA{
 			R: uint8(((pixel & 0x7C00) >> 10) << 3),
 			G: uint8(((pixel & 0x3E0) >> 5) << 3),
 			B: uint8((pixel & 0x1F) << 3),
 			A: 255,
 		}
 	default:
-		return color.NRGBA{
+		return &color.RGBA{
 			R: 255,
-			G: 255,
+			G: 000,
 			B: 255,
 			A: 255,
 		}
 
 	}
-	return color.NRGBA{
+
+}
+
+func getPixelFromTextureFormat(imageFormat uint32, imageData []byte, imageDataOffset int) (interfacing interface{}) {
+	switch imageFormat {
+	case 0xf:
+		_, ok := interfacing.(uint32)
+		if !ok {
+			fmt.Printf("INTERFACE DOING SOME SHIT")
+		}
+
+		return binary.BigEndian.Uint32(imageData[imageDataOffset : imageDataOffset+4])
+	case 0x10:
+		//GX_TF_RGB5A3		0x5
+		return binary.BigEndian.Uint16(imageData[imageDataOffset : imageDataOffset+2])
+	case 0x11:
+		//GX_TF_CI8			0x9
+		return uint8(imageData[imageDataOffset])
+	case 0x12:
+		//GX_TF_CI8			0x9
+		return uint8(imageData[imageDataOffset])
+	case 0x13:
+		return nil
+	case 0x15:
+		//GX_TF_CMPR		0xE
+		return uint8(imageData[imageDataOffset])
+	case 0x16:
+		// GX_TF_I4			0x0
+		return uint8(imageData[imageDataOffset])
+	case 0x17:
+		//GX_TF_RGB565		0x4
+		return binary.BigEndian.Uint16(imageData[imageDataOffset : imageDataOffset+2])
+	default:
+		return nil
+	}
+}
+
+func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePixel interface{}) *color.RGBA {
+	return &color.RGBA{
 		R: 255,
-		G: 255,
+		G: 000,
 		B: 255,
 		A: 255,
 	}
