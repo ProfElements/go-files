@@ -1,4 +1,4 @@
-package cmd
+package main
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ProfElements/go-files/formats/jam"
+	"github.com/ProfElements/go-files/pkg/formats/bmvg/jam"
 )
 
 /*
