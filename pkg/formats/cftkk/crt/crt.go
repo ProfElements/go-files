@@ -343,6 +343,8 @@ func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePix
 	RGB5A3
 	RGBA8
 	CI8
+
+	Fix Formats:
 	CI4
 
 	Needed Formats
@@ -356,10 +358,12 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 	imageDataIndex := 0
 
 	if texture.imageFormat == 0xF { //RGBA8
-		for y := 0; y < int(texture.height); y++ {
-			for x := 0; x < int(texture.width); x++ {
-				blockWidth, blockHeight := 4, 4
-				pixel := texture.imageData[imageDataIndex : imageDataIndex+4]
+		blockWidth, blockHeight := 4, 4
+		paletteImg := image.NewRGBA(image.Rect(0, 0, int(texture.width), int(texture.height)))
+		for i := 0; i < len(texture.imageData) && imageDataIndex < len(texture.imageData); i++ {
+			tempBuf := texture.imageData[imageDataIndex : imageDataIndex+64]
+			imageDataIndex += 64
+			for j := 0; j < 16 && imageDataIndex < len(texture.imageData); j++ {
 
 				blockSize := blockWidth * blockHeight
 				blocksPerRow := int(texture.width) / blockWidth
@@ -370,18 +374,17 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 				Ix := blockCol*blockWidth + (block_i % blockWidth)
 				Iy := blockRow*blockHeight + (block_i / blockWidth)
 
-				img.Set(Ix, Iy, color.RGBA{
-					R: uint8(pixel[3]),
-					G: uint8(pixel[0]),
-					B: uint8(pixel[1]),
-					A: uint8(pixel[2]),
+				paletteImg.Set(Ix, Iy, color.RGBA{
+					R: uint8(tempBuf[1+j*2]),
+					G: uint8(tempBuf[32+j*2]),
+					B: uint8(tempBuf[33+j*2]),
+					A: uint8(tempBuf[0+j*2]),
 				})
-
 				imagePixelIndex++
-				imageDataIndex += 4
 			}
 		}
-		return img, nil
+
+		return paletteImg, nil
 
 	} else if texture.imageFormat == 0x10 || texture.imageFormat == 0x17 { //RGB565 or RGB5A3
 		for y := 0; y < int(texture.height); y++ {
