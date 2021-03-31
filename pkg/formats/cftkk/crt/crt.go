@@ -343,8 +343,6 @@ func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePix
 	RGB5A3
 	RGBA8
 	CI8
-
-	Fix Formats:
 	CI4
 
 	Needed Formats
@@ -432,7 +430,7 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 			}
 		}
 		return img, nil
-	} else if texture.imageFormat == 0x11 || texture.imageFormat == 0x12 || texture.imageFormat == 0x13 { // CI4 / CI8 - RGB565 / RGB5A3
+	} else if texture.imageFormat == 0x11 || texture.imageFormat == 0x12 { // CI4 / CI8 - RGB565 / RGB5A3
 		var paletteEntries []*color.RGBA
 
 		paletteDataIndex := 0
@@ -476,13 +474,6 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 
 				blockWidth, blockHeight := 8, 4
 
-				if texture.imageFormat == 0x13 {
-					pixelImg = paletteEntries[uint8(texture.imageData[imageDataIndex])>>bits&0xF]
-					if bits > 0 {
-						bits = 0
-					}
-				}
-
 				blockSize := blockWidth * blockHeight
 				blocksPerRow := int(texture.width) / blockWidth
 				block_i := imageDataIndex % blockSize
@@ -498,6 +489,78 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 
 				imageDataIndex++
 				bits += 4
+
+			}
+		}
+		return img, nil
+
+	} else if texture.imageFormat == 0x13 {
+		var paletteEntries []*color.RGBA
+
+		paletteDataIndex := 0
+
+		for paletteDataIndex < len(texture.mipMapData) {
+			pixel := binary.BigEndian.Uint16(texture.mipMapData[paletteDataIndex : paletteDataIndex+2])
+
+			if texture.imageFormat == 0x13 {
+				paletteEntries = append(paletteEntries, &color.RGBA{
+					R: convert5to8(uint8((pixel >> 11) & 0x1F)),
+					G: convert6to8(uint8((pixel >> 5) & 0x3F)),
+					B: convert5to8(uint8((pixel & 0x1F))),
+					A: 255,
+				})
+			} else {
+				hasAlpha := pixel & 0x8000
+				if hasAlpha == 0 {
+					paletteEntries = append(paletteEntries, &color.RGBA{
+						R: convert4to8(uint8((pixel >> 8) & 0x0F)),
+						G: convert4to8(uint8((pixel >> 4) & 0x0F)),
+						B: convert4to8(uint8((pixel & 0x0F))),
+						A: convert3to8(uint8((pixel >> 12) & 0x07)),
+					})
+				} else {
+					paletteEntries = append(paletteEntries, &color.RGBA{
+						R: convert5to8(uint8((pixel >> 10) & 0x1F)),
+						G: convert5to8(uint8((pixel >> 5) & 0x1F)),
+						B: convert5to8(uint8((pixel & 0x1F))),
+						A: 255,
+					})
+				}
+			}
+			paletteDataIndex += 2
+		}
+
+		//Setup for
+		useSecondValue := false
+		for y := 0; y < int(texture.height); y++ {
+			for x := 0; x < int(texture.height); x++ {
+
+				pixelImg := paletteEntries[uint8(texture.imageData[imageDataIndex]>>4)]
+				pixelImg2 := paletteEntries[uint8(texture.imageData[imageDataIndex]&0xF)]
+
+				blockWidth, blockHeight := 8, 8
+
+				blockSize := blockWidth * blockHeight
+				blocksPerRow := int(texture.width) / blockWidth
+				block_i := imagePixelIndex % blockSize
+				block_id := imagePixelIndex / blockSize
+				blockCol := block_id % blocksPerRow
+				blockRow := block_id / blocksPerRow
+				Ix := blockCol*blockWidth + (block_i % blockWidth)
+				Iy := blockRow*blockHeight + (block_i / blockWidth)
+
+				//fmt.Printf("pixel - Index: %v, X: %v, Y: %v, Color: %v\n", uint8(texture.imageData[imageDataIndex]), Ix, Iy, pixelImg)
+				if useSecondValue {
+					img.Set(Ix, Iy, pixelImg2)
+					useSecondValue = false
+					imageDataIndex++
+
+				} else {
+					img.Set(Ix, Iy, pixelImg)
+					useSecondValue = true
+				}
+
+				imagePixelIndex++
 
 			}
 		}
