@@ -288,12 +288,7 @@ func getColorFromTextureFormat(data *KRTTexture, pixel uint32) *color.RGBA {
 			A: 255,
 		}
 	default:
-		return &color.RGBA{
-			R: 255,
-			G: 000,
-			B: 255,
-			A: 255,
-		}
+		return nil
 
 	}
 
@@ -329,12 +324,7 @@ func getPixelFromTextureFormat(imageFormat uint32, imageData []byte, imageDataOf
 }
 
 func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePixel interface{}) *color.RGBA {
-	return &color.RGBA{
-		R: 255,
-		G: 000,
-		B: 255,
-		A: 255,
-	}
+	return nil
 }
 
 /*
@@ -530,7 +520,6 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 			paletteDataIndex += 2
 		}
 
-		//Setup for
 		useSecondValue := false
 		for y := 0; y < int(texture.height); y++ {
 			for x := 0; x < int(texture.height); x++ {
@@ -564,6 +553,53 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 
 			}
 		}
+		return img, nil
+	} else if texture.imageFormat == 0x16 {
+
+		blockWidth, blockHeight := 8, 8
+		useSecondValue := false
+		for y := 0; y < int(texture.height); y++ {
+			for x := 0; x < int(texture.height); x++ {
+
+				pixelImg := uint8(texture.imageData[imagePixelIndex] >> 4)
+				pixelImg2 := uint8(texture.imageData[imagePixelIndex] & 0xF)
+
+				blockSize := blockWidth * blockHeight
+				blocksPerRow := int(texture.width) / blockWidth
+				block_i := imagePixelIndex % blockSize
+				block_id := imagePixelIndex / blockSize
+				blockCol := block_id % blocksPerRow
+				blockRow := block_id / blocksPerRow
+				Ix := blockCol*blockWidth + (block_i % blockWidth)
+				Iy := blockRow*blockHeight + (block_i / blockWidth)
+
+				if useSecondValue {
+					pixelImg2 = convert4to8(pixelImg2)
+					img.Set(Ix, Iy, color.RGBA{
+						R: pixelImg2,
+						G: pixelImg2,
+						B: pixelImg2,
+						A: pixelImg2,
+					})
+					useSecondValue = false
+					imageDataIndex++
+
+				} else {
+					pixelImg = convert4to8(pixelImg)
+					img.Set(Ix, Iy, color.RGBA{
+						R: pixelImg,
+						G: pixelImg,
+						B: pixelImg,
+						A: pixelImg,
+					})
+					useSecondValue = true
+				}
+
+				imagePixelIndex++
+
+			}
+		}
+
 		return img, nil
 	}
 
