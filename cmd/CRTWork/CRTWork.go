@@ -35,44 +35,29 @@ func main() {
 		inputFile = os.Args[1]
 	}
 
-	file, err := os.ReadFile(inputFile)
+	file, err := crt.ReadKRT(inputFile)
 
 	if err != nil {
 		fmt.Printf("Something went wrong wither opening %v, %v\n", inputFile, err)
 	}
 
-	parseData(file)
-
-}
-
-func parseData(data []byte) {
-
-	file, err := crt.Read(data)
+	rgba, err := file.DecodeFromKRT()
 	if err != nil {
-		fmt.Printf("Something went wrong while reading the data %v\n", err)
-	}
-
-	image, err := crt.Decode(file)
-	if err != nil {
-		fmt.Printf("Something went wrong while decoding the data into a image %v\n", err)
+		fmt.Printf("Something went wrong with decoding the KRTImage to rgba %v", err)
 	}
 
 	strPath := filepath.Base(inputFile)
 	strPath = strings.Trim(strPath, filepath.Ext(strPath))
 
-	imageFile, err := os.Create(strPath + ".png")
-
+	rgbaFile, err := os.Create(strPath + ".png")
 	if err != nil {
-		fmt.Printf("Something went wrong while creating the image file %v\n", err)
+		fmt.Printf("Something went wrong with creating the png file %v", err)
 	}
+	defer rgbaFile.Close()
 
-	err = png.Encode(imageFile, image)
+	err = png.Encode(rgbaFile, rgba)
 	if err != nil {
-		fmt.Printf("Something went wrong while encoding the file to png %v\n", err)
-	}
-	err = imageFile.Close()
-	if err != nil {
-		fmt.Printf("Something went wrong while trying to close the image file %v\n", err)
+		fmt.Printf("Something when wrong with encoding the png file %v", err)
 	}
 
 }

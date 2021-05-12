@@ -6,325 +6,183 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"os"
 )
 
 /*
-NAME: Creature From the Krust Krab Texture `KRT`
-EXTENSION: .krt or none.
-DESCRIPTION: The headerless texture format used in gcp archives in Spongebob Squarepants: Creature From the Krust Krab
+	NAME: Krusty Texture
+	EXT: .krt | none
+	DESCRIPTION: The texture format found in Spongebob Squarepants: Creature from the Krusty Krab
+	BINARY STRUCTURE:
+
+	0x20 of zeroes;       Was probably as header that got stripped.
+	width of image;       uint32
+	height of image;      uint32
+	imageFormat of image; uint322
+	blockSize of image;   uint16, can be 16, 32, or 64, which is block size 4x4 8x4 8x8 respectively
+  unknown1;             uint8, definitely a flag of some sort. Almost always 1
+	unknown2;             uint8, definitely a flag of some sort. Almost always 1
+	4 bytes of zeroes;    just padding
+	unknown3;             uint8 almost definitely a flag. Either 0xFF or 0x00 > uses uint32 space.
+	imageSize of image;   width*height.
+	0x30 of zeroes;       padding of some sort?
+	paletteOffset;        offset to palette for paletted images
+	imageOffset;          offset to image data
+	fileSize;             size of file
+	padding;              pad until paletteOffset if not 0, otherwise pad until imageOffset
 */
 
-/*Binary Structure
-padding []byte 0x20 in size of zeroes
-width          uint32
-height         uint32
-unknown1       uint32 //Probably Pixel Format
-unknown2       uint16
-unknown3       uint8
-unknown4       uint8
-unknown5       uint32 looks to be bit flags
-unknown6       uint32 looks to be bit flags aswell
-imageDataSize  uint32 (width*height)
-padding        []byte 0x30 in size of zeroes
-metaDataOffset uint32 reads until imageDataStart
-imageDataStartOffset uint32
-imageDataEndOffset   uint32
-padding[]      []byte padding until imageDataStart
-*/
-
-type KRTTexture struct {
-	width       uint32
-	height      uint32
-	imageFormat uint32
-	blockSize   uint16
-	mipMapData  []byte
-	imageData   []byte
+type KRTImage struct {
+	width         uint32
+	height        uint32
+	imageFormat   uint32
+	blockSize     uint16
+	unknown3      uint8
+	paletteOffset uint32
+	imageOffset   uint32
+	fileSize      uint32
+	paletteData   []byte
+	imageData     []byte
 }
 
-func Read(Data []byte) (*KRTTexture, error) {
-	texture := &KRTTexture{}
-
-	index := 0
-
-	if len(Data) < 0xA0 {
-		return nil, fmt.Errorf("length of data is not long enough to be considered a KRT")
+func ReadKRT(filepath string) (*KRTImage, error) {
+	raw, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, fmt.Errorf("error while reading KRTImage %v", err)
 	}
 
-	index += 0x20
-
-	texture.width = binary.BigEndian.Uint32(Data[index : index+4])
-
-	index += 4
-
-	texture.height = binary.BigEndian.Uint32(Data[index : index+4])
-
-	index += 4
-
-	texture.imageFormat = binary.BigEndian.Uint32(Data[index : index+4])
-	fmt.Printf("%x\n", texture.imageFormat)
-
-	index += 4
-
-	texture.blockSize = binary.BigEndian.Uint16(Data[index : index+2])
-
-	index += 12
-
-	if texture.width*texture.height != binary.BigEndian.Uint32(Data[index:index+4]) {
-		return nil, fmt.Errorf("wrong height width this is wrongggg %v, %v, %v", texture.width, texture.height, binary.BigEndian.Uint32(Data[index:index+4]))
-
+	if len(raw) < 0xA0 {
+		return nil, fmt.Errorf("data is not large enough to be KRTImage")
 	}
 
+	//index starts at 0x20 because the the first 0x20 bytes are just zeroes and hold no value
+	image := &KRTImage{}
+	index := 0x20
+
+	image.width = binary.BigEndian.Uint32(raw[index : index+4])
+	index += 4
+
+	image.height = binary.BigEndian.Uint32(raw[index : index+4])
+	index += 4
+
+	image.imageFormat = binary.BigEndian.Uint32(raw[index : index+4])
+	index += 4
+
+	image.blockSize = binary.BigEndian.Uint16(raw[index : index+2])
+	index += 2
+
+	//skip unknown1 and unknown2 and just assume they are one until otherwise found
+	index += 2
+
+	//Skip 4 padding bytes.
+	index += 4
+
+	image.unknown3 = uint8(raw[index])
+	index += 4
+
+	//Skip imageSize
+	index += 4
+
+	//Skip 0x30 padding bytes
 	index += 0x30
+
+	image.paletteOffset = binary.BigEndian.Uint32(raw[index : index+4])
 	index += 4
-	mipMapOffset := binary.BigEndian.Uint32(Data[index : index+4])
+
+	image.imageOffset = binary.BigEndian.Uint32(raw[index : index+4])
 	index += 4
-	imageDataOffset := binary.BigEndian.Uint32(Data[index : index+4])
-	index += 4
-	imageDataEndOffset := binary.BigEndian.Uint32(Data[index : index+4])
-	fmt.Printf("mipMapOffset %x\n", mipMapOffset)
-	fmt.Printf("imageDataStartOffset %x\n", imageDataOffset)
-	fmt.Printf("imageDataEndOffset %x\n", imageDataEndOffset)
 
-	if mipMapOffset != 0 {
-		texture.mipMapData = Data[mipMapOffset:imageDataOffset]
+	image.fileSize = binary.BigEndian.Uint32(raw[index : index+4])
+
+	if image.paletteOffset != 0 {
+		image.paletteData = raw[image.paletteOffset:image.imageOffset]
 	}
-	texture.imageData = Data[imageDataOffset:imageDataEndOffset]
 
-	return texture, nil
+	image.imageData = raw[image.imageOffset:image.fileSize]
+
+	return image, nil
 }
 
-func Decode(data *KRTTexture) (*image.RGBA, error) {
-	img, err := getTexture(data)
-	if err == nil {
-		return img, nil
-	}
+func (image *KRTImage) WriteKRT(filepath string) error {
+	buf := bytes.NewBuffer([]byte{})
 
-	//if data.imageFormat != 16 {
-	//	return nil, fmt.Errorf("does not currently support any other pixel formats besides 16 format: %v", data.imageFormat)
-	//}
+	//Write padding
+	binary.Write(buf, binary.BigEndian, make([]byte, 0x20))
 
-	imageDataIndex := 0
-	imgIndex := 0
-	imageDataPixel := getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex)
-	if imageDataPixel == nil {
-		return nil, fmt.Errorf("texture format not recognized or not yet implemented")
-	}
-	img = image.NewRGBA(image.Rect(0, 0, int(data.width), int(data.height)))
+	binary.Write(buf, binary.BigEndian, image.width)
+	binary.Write(buf, binary.BigEndian, image.height)
+	binary.Write(buf, binary.BigEndian, image.imageFormat)
+	binary.Write(buf, binary.BigEndian, image.blockSize)
 
-	//blockWidth := 4
-	//blockHeight := 4
+	//Write unknown1 and unknown as 1 since that is what almost all textures are
+	binary.Write(buf, binary.BigEndian, []byte{0x01, 0x01})
 
-	blockWidth, blockHeight := getBlockSizeFromTextureFormat(data.imageFormat)
+	//Write padding
+	binary.Write(buf, binary.BigEndian, make([]byte, 4))
 
-	for y := 0; y < int(data.height); y++ {
-		for x := 0; x < int(data.width); x++ {
+	binary.Write(buf, binary.BigEndian, uint32(image.unknown3))
+	binary.Write(buf, binary.BigEndian, uint32(image.width*image.height))
+	//Write padding
+	binary.Write(buf, binary.BigEndian, make([]byte, 0x30))
 
-			blockSize := blockWidth * blockHeight
-			blocksPerRow := int(data.width) / blockWidth
+	binary.Write(buf, binary.BigEndian, image.paletteOffset)
+	binary.Write(buf, binary.BigEndian, image.imageOffset)
+	binary.Write(buf, binary.BigEndian, image.fileSize)
 
-			block_i := imgIndex % blockSize
-			block_id := imgIndex / blockSize
-			blockCol := block_id % blocksPerRow
-			blockRow := block_id / blocksPerRow
-			Ix := blockCol*blockWidth + (block_i % blockWidth)
-			Iy := blockRow*blockHeight + (block_i / blockWidth)
+	if image.paletteOffset != 0 && buf.Len() < int(image.paletteOffset) {
+		padding := int(image.paletteOffset) - buf.Len()
+		binary.Write(buf, binary.BigEndian, make([]byte, padding))
+		binary.Write(buf, binary.BigEndian, image.paletteData)
+		binary.Write(buf, binary.BigEndian, image.imageData)
 
-			var imageDataPixel32 uint32
-
-			switch v := imageDataPixel.(type) {
-			case uint8:
-				imageDataPixel32 = uint32(imageDataPixel.(uint8))
-				_ = v
-			case uint16:
-				imageDataPixel32 = uint32(imageDataPixel.(uint16))
-			case uint32:
-				imageDataPixel32 = imageDataPixel.(uint32)
-			}
-
-			pixelColor := getColorFromTextureFormat(data, imageDataPixel32)
-			if pixelColor == nil {
-				pixelColor = getColorFromTexturePalette(data.imageFormat, data.mipMapData, imageDataPixel32)
-			}
-
-			img.Set(Ix, Iy, pixelColor)
-			imageDataIndex += 2
-			imgIndex++
-			if imageDataIndex < len(data.imageData) {
-				switch v := getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(type) {
-				case uint8:
-					imageDataPixel = uint32(getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint8))
-					_ = v
-				case uint16:
-					imageDataPixel = uint32(getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint16))
-				case uint32:
-					imageDataPixel = getPixelFromTextureFormat(data.imageFormat, data.imageData, imageDataIndex).(uint32)
-				}
-			}
-
+		err := os.WriteFile(filepath, buf.Bytes(), 0666)
+		if err != nil {
+			return fmt.Errorf("failed to write file due to %v to %v", err, filepath)
 		}
-	}
 
-	//img, err := unswizzleImg(data.imageFormat, img)
-	// err != nil {
-	//	fmt.Printf("Something went wrong while unswizzling the image")
-	//}
-
-	return img, nil
-}
-
-/*
-func read(data []byte) (*KRTTexture, error) { return nil, nil }
-func write(*File) ([]byte, error)           { return nil, nil }
-func decode(*File) *Work                    { return nil }
-func encode(*Work) *KRTTexture              { return nil }
-*/
-
-/*
-//#define GX_TF_I4			0x0
-//#define GX_TF_I8			0x1
-//#define GX_TF_IA4			0x2
-//#define GX_TF_IA8			0x3
-
-//#define GX_TF_RGB5A3		0x5
-//#define GX_TF_RGBA8	    0x6
-//#define GX_TF_CI4			0x8
-//#define GX_TF_CI8			0x9
-//#define GX_TF_CI14		0xa
-
-//#define GX_TL_IA8			0x00
-//#define GX_TL_RGB565		0x01
-//#define GX_TL_RGB5A3		0x02
-*/
-func getBlockSizeFromTextureFormat(imageFormat uint32) (width int, height int) {
-	switch imageFormat {
-	case 0xf:
-		// GX_TF_RGBA8	    0x6
-		return 4, 4
-	case 0x10:
-		//GX_TF_RGB5A3		0x5
-		return 4, 4
-	case 0x11:
-		//GX_TF_CI8			0x9
-		return 8, 4
-	case 0x12:
-		//GX_TF_CI8			0x9
-		return 8, 4
-	case 0x13:
-		//Says it just a palette or something :shrug:
-		return 0, 0
-	case 0x15:
-		//GX_TF_CMPR		0xE
-		return 8, 8
-	case 0x16:
-		// GX_TF_I4			0x0
-		return 8, 8
-	case 0x17:
-		//GX_TF_RGB565		0x4
-		return 4, 4
-	default:
-		return 0, 0
-	}
-
-}
-
-func getColorFromTextureFormat(data *KRTTexture, pixel uint32) *color.RGBA {
-	switch data.imageFormat {
-	case 0xf:
-		// GX_TF_RGBA8	    0x6
-		buf := new(bytes.Buffer)
-		binary.Write(buf, binary.LittleEndian, pixel)
-		colorData := buf.Bytes()
-
-		return &color.RGBA{
-			R: colorData[0],
-			G: colorData[1],
-			B: colorData[2],
-			A: colorData[3],
-		}
-	case 0x10:
-		//GX_TF_RGB5A3		0x5
-
-		return &color.RGBA{
-			R: uint8(((pixel & 0x7C00) >> 10) << 3),
-			G: uint8(((pixel & 0x3E0) >> 5) << 3),
-			B: uint8((pixel & 0x1F) << 3),
-			A: 255,
-		}
-	case 0x11:
-		paletteData := binary.BigEndian.Uint16(data.mipMapData[pixel : pixel+2])
-
-		return &color.RGBA{
-			R: uint8(((paletteData & 0x7C00) >> 10) << 3),
-			G: uint8(((paletteData & 0x3E0) >> 5) << 3),
-			B: uint8((paletteData & 0x1F) << 3),
-			A: 255,
-		}
-	case 0x12:
-		//GX_TF_CI8			0x9
-		paletteData := binary.BigEndian.Uint16(data.mipMapData[pixel : pixel+2])
-
-		return &color.RGBA{
-			R: uint8(((paletteData & 0x7C00) >> 10) << 3),
-			G: uint8(((paletteData & 0x3E0) >> 5) << 3),
-			B: uint8((paletteData & 0x1F) << 3),
-			A: 255,
-		}
-	case 0x13:
-		//GX_TF_CI4
-		return nil
-		//Says it just a palette or something :shrug:
-	case 0x15:
-		//GX_TF_CMPR		0xE
-		return nil
-	case 0x16:
-		// GX_TF_I4			0x0
-		return nil
-	case 0x17:
-		//GX_TF_RGB565		0x4
-		return &color.RGBA{
-			R: uint8(((pixel & 0x7C00) >> 10) << 3),
-			G: uint8(((pixel & 0x3E0) >> 5) << 3),
-			B: uint8((pixel & 0x1F) << 3),
-			A: 255,
-		}
-	default:
-		return nil
-
-	}
-
-}
-
-func getPixelFromTextureFormat(imageFormat uint32, imageData []byte, imageDataOffset int) (interfacing interface{}) {
-	switch imageFormat {
-	case 0xf:
-		return binary.BigEndian.Uint32(imageData[imageDataOffset : imageDataOffset+4])
-	case 0x10:
-		//GX_TF_RGB5A3		0x5
-		return binary.BigEndian.Uint16(imageData[imageDataOffset : imageDataOffset+2])
-	case 0x11:
-		//GX_TF_CI8			0x9
-		return uint8(imageData[imageDataOffset])
-	case 0x12:
-		//GX_TF_CI8			0x9
-		return uint8(imageData[imageDataOffset])
-	case 0x13:
-		return nil
-	case 0x15:
-		//GX_TF_CMPR		0xE
-		return uint8(imageData[imageDataOffset])
-	case 0x16:
-		// GX_TF_I4			0x0
-		return uint8(imageData[imageDataOffset])
-	case 0x17:
-		//GX_TF_RGB565		0x4
-		return binary.BigEndian.Uint16(imageData[imageDataOffset : imageDataOffset+2])
-	default:
 		return nil
 	}
-}
 
-func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePixel interface{}) *color.RGBA {
+	if buf.Len() < int(image.imageOffset) {
+		padding := int(image.imageOffset) - buf.Len()
+		binary.Write(buf, binary.BigEndian, make([]byte, padding))
+		binary.Write(buf, binary.BigEndian, image.imageData)
+
+		err := os.WriteFile(filepath, buf.Bytes(), 0666)
+		if err != nil {
+			return fmt.Errorf("failed to write file due to %v to %v", err, filepath)
+		}
+
+		return nil
+	}
+
 	return nil
+}
+
+func EncodeToKRT(rgba *image.RGBA) (*KRTImage, error) {
+	image := &KRTImage{
+		width:         uint32(rgba.Rect.Dx()),
+		height:        uint32(rgba.Rect.Dy()),
+		imageFormat:   0xF,
+		blockSize:     16,
+		unknown3:      0xFF, //Assume it FF for now
+		paletteOffset: 0x00,
+		imageOffset:   0xA0,
+		fileSize:      uint32(0xA0 + (rgba.Rect.Dx() * rgba.Rect.Dy())),
+		paletteData:   []byte{},
+		imageData:     bytes.NewBuffer(rgba.Pix).Bytes(),
+	}
+
+	return image, nil
+}
+
+func (image *KRTImage) DecodeFromKRT() (*image.RGBA, error) {
+	rgba, err := getTexture(image.width, image.height, image.imageFormat, image.imageData, image.paletteData)
+	if err != nil {
+		return nil, fmt.Errorf("error while decoding from KRTImage %v", err)
+	}
+
+	return rgba, nil
 }
 
 /*
@@ -339,22 +197,22 @@ func getColorFromTexturePalette(imageFormat uint32, paletteData []byte, imagePix
 	I4
 	CMPR
 */
-func getTexture(texture *KRTTexture) (*image.RGBA, error) {
-	img := image.NewRGBA(image.Rect(0, 0, int(texture.width), int(texture.height)))
+func getTexture(width uint32, height uint32, format uint32, data []byte, paletteData []byte) (*image.RGBA, error) {
+	img := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
 
 	imagePixelIndex := 0
 	imageDataIndex := 0
 
-	if texture.imageFormat == 0xF { //RGBA8
+	if format == 0xF { //RGBA8
 		blockWidth, blockHeight := 4, 4
-		paletteImg := image.NewRGBA(image.Rect(0, 0, int(texture.width), int(texture.height)))
-		for i := 0; i < len(texture.imageData) && imageDataIndex < len(texture.imageData); i++ {
-			tempBuf := texture.imageData[imageDataIndex : imageDataIndex+64]
+		paletteImg := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
+		for i := 0; i < len(data) && imageDataIndex < len(data); i++ {
+			tempBuf := data[imageDataIndex : imageDataIndex+64]
 			imageDataIndex += 64
-			for j := 0; j < 16 && imageDataIndex < len(texture.imageData); j++ {
+			for j := 0; j < 16 && imageDataIndex < len(data); j++ {
 
 				blockSize := blockWidth * blockHeight
-				blocksPerRow := int(texture.width) / blockWidth
+				blocksPerRow := int(width) / blockWidth
 				block_i := imagePixelIndex % blockSize
 				block_id := imagePixelIndex / blockSize
 				blockCol := block_id % blocksPerRow
@@ -374,14 +232,14 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 
 		return paletteImg, nil
 
-	} else if texture.imageFormat == 0x10 || texture.imageFormat == 0x17 { //RGB565 or RGB5A3
-		for y := 0; y < int(texture.height); y++ {
-			for x := 0; x < int(texture.width); x++ {
+	} else if format == 0x10 || format == 0x17 { //RGB565 or RGB5A3
+		for y := 0; y < int(height); y++ {
+			for x := 0; x < int(width); x++ {
 				blockWidth, blockHeight := 4, 4
-				pixel := binary.BigEndian.Uint16(texture.imageData[imageDataIndex : imageDataIndex+2])
+				pixel := binary.BigEndian.Uint16(data[imageDataIndex : imageDataIndex+2])
 
 				blockSize := blockWidth * blockHeight
-				blocksPerRow := int(texture.width) / blockWidth
+				blocksPerRow := int(width) / blockWidth
 				block_i := imagePixelIndex % blockSize
 				block_id := imagePixelIndex / blockSize
 				blockCol := block_id % blocksPerRow
@@ -389,7 +247,7 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 				Ix := blockCol*blockWidth + (block_i % blockWidth)
 				Iy := blockRow*blockHeight + (block_i / blockWidth)
 
-				if texture.imageFormat == 0x17 {
+				if format == 0x17 {
 					img.Set(Ix, Iy, color.RGBA{
 						R: convert5to8(uint8((pixel >> 11))),
 						G: convert6to8(uint8((pixel >> 5 & 0x3F))),
@@ -420,15 +278,15 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 			}
 		}
 		return img, nil
-	} else if texture.imageFormat == 0x11 || texture.imageFormat == 0x12 { // CI4 / CI8 - RGB565 / RGB5A3
+	} else if format == 0x11 || format == 0x12 { // CI4 / CI8 - RGB565 / RGB5A3
 		var paletteEntries []*color.RGBA
 
 		paletteDataIndex := 0
 
-		for paletteDataIndex < len(texture.mipMapData) {
-			pixel := binary.BigEndian.Uint16(texture.mipMapData[paletteDataIndex : paletteDataIndex+2])
+		for paletteDataIndex < len(paletteData) {
+			pixel := binary.BigEndian.Uint16(paletteData[paletteDataIndex : paletteDataIndex+2])
 
-			if texture.imageFormat == 0x11 {
+			if format == 0x11 {
 				paletteEntries = append(paletteEntries, &color.RGBA{
 					R: convert5to8(uint8((pixel >> 11) & 0x1F)),
 					G: convert6to8(uint8((pixel >> 5) & 0x3F)),
@@ -458,14 +316,14 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 
 		//Setup for
 		bits := 0
-		for y := 0; y < int(texture.height); y++ {
-			for x := 0; x < int(texture.width); x++ {
-				pixelImg := paletteEntries[uint8(texture.imageData[imageDataIndex])]
+		for y := 0; y < int(height); y++ {
+			for x := 0; x < int(width); x++ {
+				pixelImg := paletteEntries[uint8(data[imageDataIndex])]
 
 				blockWidth, blockHeight := 8, 4
 
 				blockSize := blockWidth * blockHeight
-				blocksPerRow := int(texture.width) / blockWidth
+				blocksPerRow := int(width) / blockWidth
 				block_i := imageDataIndex % blockSize
 				block_id := imageDataIndex / blockSize
 				blockCol := block_id % blocksPerRow
@@ -484,15 +342,15 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 		}
 		return img, nil
 
-	} else if texture.imageFormat == 0x13 {
+	} else if format == 0x13 {
 		var paletteEntries []*color.RGBA
 
 		paletteDataIndex := 0
 
-		for paletteDataIndex < len(texture.mipMapData) {
-			pixel := binary.BigEndian.Uint16(texture.mipMapData[paletteDataIndex : paletteDataIndex+2])
+		for paletteDataIndex < len(paletteData) {
+			pixel := binary.BigEndian.Uint16(paletteData[paletteDataIndex : paletteDataIndex+2])
 
-			if texture.imageFormat == 0x13 {
+			if format == 0x13 {
 				paletteEntries = append(paletteEntries, &color.RGBA{
 					R: convert5to8(uint8((pixel >> 11) & 0x1F)),
 					G: convert6to8(uint8((pixel >> 5) & 0x3F)),
@@ -521,16 +379,16 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 		}
 
 		useSecondValue := false
-		for y := 0; y < int(texture.height); y++ {
-			for x := 0; x < int(texture.height); x++ {
+		for y := 0; y < int(height); y++ {
+			for x := 0; x < int(height); x++ {
 
-				pixelImg := paletteEntries[uint8(texture.imageData[imageDataIndex]>>4)]
-				pixelImg2 := paletteEntries[uint8(texture.imageData[imageDataIndex]&0xF)]
+				pixelImg := paletteEntries[uint8(data[imageDataIndex]>>4)]
+				pixelImg2 := paletteEntries[uint8(data[imageDataIndex]&0xF)]
 
 				blockWidth, blockHeight := 8, 8
 
 				blockSize := blockWidth * blockHeight
-				blocksPerRow := int(texture.width) / blockWidth
+				blocksPerRow := int(width) / blockWidth
 				block_i := imagePixelIndex % blockSize
 				block_id := imagePixelIndex / blockSize
 				blockCol := block_id % blocksPerRow
@@ -554,18 +412,18 @@ func getTexture(texture *KRTTexture) (*image.RGBA, error) {
 			}
 		}
 		return img, nil
-	} else if texture.imageFormat == 0x16 {
+	} else if format == 0x16 {
 
 		blockWidth, blockHeight := 8, 8
 		useSecondValue := false
-		for y := 0; y < int(texture.height); y++ {
-			for x := 0; x < int(texture.height); x++ {
+		for y := 0; y < int(height); y++ {
+			for x := 0; x < int(height); x++ {
 
-				pixelImg := uint8(texture.imageData[imagePixelIndex] >> 4)
-				pixelImg2 := uint8(texture.imageData[imagePixelIndex] & 0xF)
+				pixelImg := uint8(data[imagePixelIndex] >> 4)
+				pixelImg2 := uint8(data[imagePixelIndex] & 0xF)
 
 				blockSize := blockWidth * blockHeight
-				blocksPerRow := int(texture.width) / blockWidth
+				blocksPerRow := int(width) / blockWidth
 				block_i := imagePixelIndex % blockSize
 				block_id := imagePixelIndex / blockSize
 				blockCol := block_id % blocksPerRow
