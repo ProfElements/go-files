@@ -170,7 +170,20 @@ func EncodeToKRT(rgba *image.RGBA) (*KRTImage, error) {
 		imageOffset:   0xA0,
 		fileSize:      uint32(0xA0 + (rgba.Rect.Dx() * rgba.Rect.Dy())),
 		paletteData:   []byte{},
-		imageData:     bytes.NewBuffer(rgba.Pix).Bytes(),
+	}
+	
+	
+	for y := rgba.Bounds().Min.Y; y < rgba.Bounds().Max.Y; y++ {
+	  for x := rgba.Bounds().Min.X; x < rgba.Bounds().Max.X; x++ {
+	  	blockSize := blockWidth * blockHeight
+				blocksPerRow := int(width) / blockWidth
+				block_i := imagePixelIndex % blockSize
+				block_id := imagePixelIndex / blockSize
+				blockCol := block_id % blocksPerRow
+				blockRow := block_id / blocksPerRow
+				Ix := blockCol*blockWidth + (block_i % blockWidth)
+			  Iy := blockRow*blockHeight + (block_i / blockWidth)
+	  }
 	}
 
 	return image, nil
@@ -218,7 +231,7 @@ func getTexture(width uint32, height uint32, format uint32, data []byte, palette
 				blockCol := block_id % blocksPerRow
 				blockRow := block_id / blocksPerRow
 				Ix := blockCol*blockWidth + (block_i % blockWidth)
-				Iy := blockRow*blockHeight + (block_i / blockWidth)
+			  Iy := blockRow*blockHeight + (block_i / blockWidth)
 
 				paletteImg.Set(Ix, Iy, color.RGBA{
 					R: uint8(tempBuf[1+j*2]),
