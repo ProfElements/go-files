@@ -66,9 +66,9 @@ func parseData(data []byte) {
 		fmt.Printf(strPath + ".fetm")
 
 		if outputFile == "" {
-			os.WriteFile(strPath+".fetm", data, 777)
+			os.WriteFile(strPath+".fetm", data, 0777)
 		} else {
-			os.WriteFile(outputFile, data, 777)
+			os.WriteFile(outputFile, data, 0777)
 		}
 
 	} else {
@@ -84,9 +84,9 @@ func parseData(data []byte) {
 		fmt.Printf(strPath + ".json")
 
 		if outputFile == "" {
-			os.WriteFile(strPath+".json", json, 777)
+			os.WriteFile(strPath+".json", json, 0777)
 		} else {
-			os.WriteFile(outputFile, json, 777)
+			os.WriteFile(outputFile, json, 0777)
 		}
 	}
 
